@@ -150,7 +150,8 @@ enum {glb_EQUALS, glb_LESS, glb_MORE, glb_NOT_COMPARABLE } glb_comparison_codes;
 
 #define GLB_LOCSET_BUF_SIZE GLB_MAX_CONC_UNITS * GLB_LOC_REC_SIZE
 
-#define GLB_MAX_TEXT_BUF_SIZE 1024 * 1024
+#define GLB_MAX_TEXT_BUF_SIZE 1024 * 1024 * sizeof(char)
+#define GLB_MAX_METADATA_BUF_SIZE 1024 * 10 * sizeof(char)
 
 #define GLB_MAX_CONTEXTS 3
 
@@ -169,10 +170,18 @@ enum {glb_EQUALS, glb_LESS, glb_MORE, glb_NOT_COMPARABLE } glb_comparison_codes;
 #define GLB_CONTEXT_SEPAR ".."
 
 #define GLB_RESULT_ROW_BEGIN "<div class=\\\"msg_row\\\">"\
-        "<div class=\\\"msg_row_title\\\">%s</div>"\
-	"<div class=\\\"msg_row_desc\\\">"
+	"<div class=\\\"doc_cit\\\">"
 
-#define GLB_RESULT_ROW_END "</div></div>"
+
+#define GLB_META_BEGIN "<div class=\\\"doc_meta\\\">"
+
+#define GLB_META_TITLE "<A NAME=\\\"\\\" HREF=\\\"#\\\">%s</A>"
+
+#define GLB_META_AUTH " <SPAN class=\\\"doc_auth\\\"> (%s)</SPAN>"
+
+#define GLB_META_DATE " <SPAN class=\\\"doc_date\\\">%s</SPAN>"
+
+#define GLB_DIV_END "</div>"
 
 #define GLB_DELIVERY_OK "OK"
 #define GLB_DELIVERY_OK_SIZE strlen(GLB_DELIVERY_OK)
@@ -183,6 +192,12 @@ enum {glb_EQUALS, glb_LESS, glb_MORE, glb_NOT_COMPARABLE } glb_comparison_codes;
 
 #define GLB_JSON_RESULT_END "}}"
 #define GLB_JSON_RESULT_END_SIZE 2
+
+#define GLB_JSON_TITLE ",\"title\": \""
+#define GLB_JSON_TITLE_SIZE strlen(GLB_JSON_TITLE)
+
+#define GLB_JSON_AUTH ",\"auth\": \""
+#define GLB_JSON_AUTH_SIZE strlen(GLB_JSON_AUTH)
 
 #define GLB_JSON_EXACT ",\"exact\": \""
 #define GLB_JSON_EXACT_SIZE strlen(GLB_JSON_EXACT)

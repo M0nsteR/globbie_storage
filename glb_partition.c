@@ -188,14 +188,13 @@ glbPartition_add(struct glbPartition *self,
     ret = glb_mkpath(path_buf, 0777);
     if (ret != glb_OK) return ret;
 
-
     /* write metadata */
-    glb_write_file((const char*)path_buf, 
+    glb_write_file((const char*)path_buf,
 		   "meta", data->spec, data->spec_size);
 
     /* write textual content */
     /*glb_remove_nonprintables(path_buf);*/
-    glb_write_file((const char*)path_buf, 
+    glb_write_file((const char*)path_buf,
 		   "text", data->text, data->text_size);
 
     /* write interp */

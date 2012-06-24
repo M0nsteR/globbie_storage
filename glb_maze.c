@@ -82,8 +82,25 @@ glbSet_cmp(const void *a,
 
     if ((*set1)->num_obj_ids == (*set2)->num_obj_ids) return 0;
 
-    /* ascending order */
+    /* ascending order: 1 5 7 11 .. */
     if ((*set1)->num_obj_ids > (*set2)->num_obj_ids) return 1;
+
+    return -1;
+}
+
+static int 
+glbSet_cmp_desc(const void *a,
+	   const void *b)
+{
+    struct glbSet **set1, **set2;
+
+    set1 = (struct glbSet**)a;
+    set2 = (struct glbSet**)b;
+
+    if ((*set1)->num_obj_ids == (*set2)->num_obj_ids) return 0;
+
+    /* descending order: 11 7 5 1 */
+    if ((*set1)->num_obj_ids < (*set2)->num_obj_ids) return 1;
 
     return -1;
 }
@@ -209,8 +226,6 @@ glbMaze_alloc_agent_set(struct glbMaze *self)
 
     set = self->agent_set_storage[self->num_agents];
 
-    printf("%d %p %p\n", self->num_agents, set, set->init);
-
     set->init(set);
 
     self->num_agents++;
@@ -334,70 +349,6 @@ glbMaze_find_ref(struct glbMazeRef *ref,
     }
 
     return NULL;
-}
-
-
-
-
-
-static int 
-glbMaze_add_spec(struct glbMaze *self,
-		struct glbMazeSpec *topic_spec,
-		struct glbMazeItem *complex)
-{
-    struct glbMazeItem *item;
-    struct glbMazeSpec *spec;
-    struct glbMazeLoc *loc;
-
-    const char *name;
-    int ret;
-
-    name =  (const char*)complex->name;
-
-    /*printf("  add complex \"%s\" as spec \"%s\"..\n", 
-      name, topic_spec->name);*/
-
-    item = NULL;
-
-    if (topic_spec->items)
-	item = glbMaze_find_item(topic_spec->items, name);
-
-
-    /*if (!item) {
-	item = glbMaze_alloc_item(self);
-	if (!item) return glb_NOMEM;
-	item->name = name;
-	item->next = topic_spec->items;
-	topic_spec->items = item;
-    }
-    else {
-	printf("  spec already exists: %p!\n", item);
-	}*/
-
-
-    /*printf(" add a loc to spec item...\n");*/
-
-
-    /* more specs */
-    /*if (complex->spec.complex) {
-	spec = NULL;
-	if (item->specs)
-	    spec = glbMaze_find_spec(item->specs, complex->spec.name);
-
-	if (!spec) {
-	    spec = self->alloc_spec(self);
-	    if (!spec) return glb_NOMEM;
-	    spec->name = complex->spec.name;
-	    spec->next = item->specs;
-	    item->specs = spec;
-	}
-
-	ret = glbMaze_add_spec(self, spec, complex->spec.complex);
-   
-
-	}*/
-
-    return glb_OK;
 }
 
 
@@ -640,6 +591,12 @@ glbMaze_find_context(struct glbMaze *self,
     return 0;
 }
 
+
+
+
+
+
+
 static int
 glbMaze_read_refs(struct glbMaze *self,
 		  const char *rec,
@@ -718,6 +675,90 @@ error:
 
     return ret;
 }
+
+
+
+static int
+glbMaze_read_specs(struct glbMaze *self,
+		  const char *rec,
+		  struct glbMazeItem *item)
+{
+    struct glbMazeSpec *spec = NULL;
+    struct glbMazeItem *spec_item;
+
+    char buf[GLB_TEMP_BUF_SIZE];
+    size_t buf_size;
+
+    const char *begin;
+    const char *end;
+    const char *sep;
+    long num_objs;
+    int ret = glb_OK;
+
+    begin = rec;
+
+    /* for each spec */
+    while (*begin) {
+	sep = strchr(begin, '[');
+	if (!sep) break;
+
+	end = strchr(begin, ']');
+	if (!end) break;
+
+	buf_size = end - (sep + 1);
+	strncpy(buf, sep + 1, buf_size);
+	buf[buf_size] = '\0';
+
+	ret = glb_parse_num((const char*)buf, &num_objs);
+	if (ret != glb_OK) goto final;
+
+	buf_size = sep - begin;
+	strncpy(buf, begin, buf_size);
+	buf[buf_size] = '\0';
+
+	/*printf("    SPEC: \"%s\" [%d]\n", buf, num_objs);*/
+
+	if (item->specs)
+	    spec = glbMaze_find_spec(item->specs, (const char*)buf);
+
+	if (!spec) {
+	    spec = glbMaze_alloc_spec(self);
+	    if (!spec) {
+		ret = glb_NOMEM;
+		goto error;
+	    }
+
+
+	    /* find the root item */
+	    ret = glbMaze_get_item(self, 
+				   (const char*)buf,
+				   buf_size,
+				   &spec_item);
+	    if (ret != glb_OK) return ret;
+
+	    spec->item = spec_item;
+
+	    spec->next = item->specs;
+	    item->specs = spec;
+	}
+
+
+    
+	spec->num_objs += num_objs;
+
+    final:
+	begin = end;
+	begin++;
+    }
+
+    ret = glb_OK;
+
+error:
+
+    return ret;
+}
+
+
 
 static int 
 glbMaze_add_obj_id(struct glbMaze *self,
@@ -805,6 +846,13 @@ glbMaze_add_conc(struct glbMaze *self,
     ret = glbMaze_get_item(self, name, name_size, &item);
     if (ret != glb_OK) return ret;
 
+    /* read specs */
+    s = strstr(rec, "SPECS:");
+    if (s) {
+	s += strlen("SPECS:");
+	glbMaze_read_specs(self, s, item);
+    }
+
     /* read subclass refs */
     s = strstr(rec, "REFS:");
     if (s) {
@@ -836,6 +884,142 @@ glbMaze_sort_items(struct glbMaze *self)
 
     return glb_OK;
 }
+
+
+
+
+
+
+static int
+glbMaze_read_metadata(struct glbMaze *self,
+		      const char *obj_id,
+		      const char *filename)
+{
+    char buf[ GLB_MAX_METADATA_BUF_SIZE];
+    size_t buf_size;
+
+    xmlDocPtr doc;
+    xmlNodePtr root, cur_node;
+    char *value = NULL;
+    int ret = glb_OK;
+
+    doc = xmlParseFile(filename);
+    if (!doc) {
+	fprintf(stderr, "\n    -- XML input failure.");
+	ret = -1;
+	goto error;
+    }
+
+    root = xmlDocGetRootElement(doc);
+    if (!root) {
+	fprintf(stderr,"empty document\n");
+	ret = -2;
+	goto error;
+    }
+
+    if (xmlStrcmp(root->name, (const xmlChar *) "spec")) {
+	fprintf(stderr,"Document of the wrong type: the root node " 
+		" must be \"spec\"");
+	ret = -3;
+	goto error;
+    }
+
+    /* metadata begin div */
+    ret = self->write(self, GLB_METADATA, 
+		      GLB_META_BEGIN,
+		      strlen(GLB_META_BEGIN));
+    if (ret != glb_OK) return ret;
+
+
+    for (cur_node = root->children; cur_node; cur_node = cur_node->next) {
+        if (cur_node->type != XML_ELEMENT_NODE) continue;
+
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"title"))) {
+	    value = (char*)xmlNodeGetContent(cur_node);
+	    if (!value) continue;
+
+	    glb_remove_nonprintables(value);
+
+	    sprintf(buf,
+		    GLB_META_TITLE,
+		    (const char*)value);
+	    buf_size = strlen(buf);
+
+	    ret = self->write(self, GLB_METADATA, 
+			      (const char*)buf, buf_size);
+	    if (ret != glb_OK) goto error;
+
+	    xmlFree(value);
+	    value = NULL;
+	}
+
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"auth"))) {
+	    value = (char*)xmlNodeGetContent(cur_node);
+	    if (!value) continue;
+
+	    glb_remove_nonprintables(value);
+
+	    sprintf(buf,
+		    GLB_META_AUTH,
+		    value);
+	    buf_size = strlen(buf);
+	    ret = self->write(self, GLB_METADATA, 
+			      buf, buf_size);
+	    if (ret != glb_OK) goto error;
+	    xmlFree(value);
+	    value = NULL;
+	}
+
+	if ((!xmlStrcmp(cur_node->name, (const xmlChar *)"date"))) {
+	    value = (char *)xmlGetProp(cur_node,
+				       (const xmlChar *)"str");
+	    if (!value) continue;
+
+	    sprintf(buf,
+		    GLB_META_DATE,
+		    value);
+	    buf_size = strlen(buf);
+	    ret = self->write(self, GLB_METADATA, 
+			      buf, buf_size);
+	    if (ret != glb_OK) goto error;
+	    xmlFree(value);
+	    value = NULL;
+	}
+	
+
+    }
+    
+
+   /* metadata end div */
+    ret = self->write(self, GLB_METADATA, 
+		      GLB_DIV_END,
+		      strlen(GLB_DIV_END));
+    if (ret != glb_OK) return ret;
+
+    goto final;
+
+error:
+
+    if (value)
+      xmlFree(value);
+
+    /* reset metadata buffer */
+    self->metadata[0] = '\0';
+    self->metadata_size = 0;
+
+final:
+
+    printf("meta OK: %d\n", self->metadata_size);
+
+    if (value)
+	xmlFree(value);
+
+    xmlFreeDoc(doc);
+
+    return ret;
+}
+
+
 
 
 static int 
@@ -871,6 +1055,20 @@ glbMaze_read_text(struct glbMaze *self,
     self->text_size = res;
 
     close(fd);
+
+    /* read metadata */
+    self->metadata[0] = '\0';
+    self->curr_metadata_buf = self->metadata;
+    self->metadata_size = 0;
+    self->metadata_free_space = self->max_metadata_size;
+
+    glb_make_id_path(path,  self->storage_path, obj_id, "meta");
+
+    if (DEBUG_MAZE_LEVEL_5)
+	printf("\n  ...reading metadata from: \"%s\"\n", path);
+
+    ret = glbMaze_read_metadata(self, obj_id, (const char*)path);
+
 
     return glb_OK;
 }
@@ -959,28 +1157,40 @@ glbMaze_build_contexts(struct glbMaze *self,
 
     if (!context_size) return glb_FAIL;
 
-    sprintf(output, 
-	    GLB_RESULT_ROW_BEGIN,
-	    obj_id);
-    output_size = strlen(output);
 
+    /* begin record */
     ret = self->write(self, GLB_SEARCH_RESULTS, 
-		output,
-		output_size);
+		      GLB_RESULT_ROW_BEGIN,
+		      strlen(GLB_RESULT_ROW_BEGIN));
     if (ret != glb_OK) return ret;
 
+    /* citation */
     ret = self->write(self, GLB_SEARCH_RESULTS, 
 		context_buf,
 		context_size);
     if (ret != glb_OK) return ret;
 
     ret = self->write(self, GLB_SEARCH_RESULTS, 
-		GLB_RESULT_ROW_END,
-		strlen(GLB_RESULT_ROW_END));
+		      GLB_DIV_END,
+		      strlen(GLB_DIV_END));
+    if (ret != glb_OK) return ret;
+
+    /* metadata */
+    if (self->metadata_size) {
+	ret = self->write(self, GLB_SEARCH_RESULTS, 
+			  self->metadata,
+			  self->metadata_size);
+	if (ret != glb_OK) return ret;
+    }
+
+    /* close record */
+    ret = self->write(self, GLB_SEARCH_RESULTS, 
+		      GLB_DIV_END,
+		      strlen(GLB_DIV_END));
     if (ret != glb_OK) return ret;
 
 
-    if (DEBUG_MAZE_LEVEL_2)
+    /*if (DEBUG_MAZE_LEVEL_2)*/
 	printf("\n\n   OUTPUT RESULTS:\n %s\n[size: %d]\n", 
 	       self->results, self->results_size);
  
@@ -1226,7 +1436,54 @@ glbMaze_fetch_results(struct glbMaze *self,
     return glb_OK;
 }
 
+static int 
+glbMaze_output_domain_terms(struct glbMaze *self)
+{
+    struct glbSet *set;
+    char buf[GLB_TEMP_BUF_SIZE];
+    size_t buf_size;
+    int i, ret;
 
+    /* output domain items  */
+    ret = self->write(self, GLB_SEARCH_RESULTS,
+		GLB_JSON_SIMILAR_BEGIN,
+		GLB_JSON_SIMILAR_BEGIN_SIZE);
+    if (ret != glb_OK) return ret;
+
+    /*ret = self->write(self, GLB_SEARCH_RESULTS,
+		self->domains,
+		self->domains_size);
+		if (ret != glb_OK) return ret; */
+
+    for (i = 0; i < self->num_agents; i++) {
+
+	set = self->agent_set_storage[i];
+
+	/* write domain item */
+	sprintf(buf, "<A CLASS=\\\"glbref\\\""
+		" NAME=\\\"%s\\\" HREF=\\\"#\\\">%s <span class=\\\"freq\\\">(%d)</span></A><BR/>",
+		set->name,
+		set->name,
+		set->num_obj_ids);
+	buf_size = strlen(buf);
+
+	ret = self->write(self, GLB_SEARCH_RESULTS, 
+			  buf, buf_size);
+	if (ret != glb_OK) return ret;
+    }
+
+
+    /* close string */
+    ret = self->write(self, GLB_SEARCH_RESULTS, 
+		      GLB_JSON_STR_END,
+		      GLB_JSON_STR_END_SIZE);
+    if (ret != glb_OK) return ret;
+
+
+
+    return glb_OK;
+}
+	    
 static int 
 glbMaze_add_domain_terms(struct glbMaze *self,
 			 struct glbSet *child,
@@ -1277,23 +1534,6 @@ glbMaze_add_domain_terms(struct glbMaze *self,
 	    set->build_index(set);
 
 
-	    /* write domain item */
-	    ret = self->write(self, GLB_DOMAINS, 
-			      "<LI><A HREF=\\\"#\\\"> ",
-			      strlen("<LI><A HREF=\\\"#\\\"> "));
-	    if (ret != glb_OK) return ret;
-
-	    ret = self->write(self, GLB_DOMAINS, 
-			      ref->item->name,
-			      ref->item->name_size);
-	    if (ret != glb_OK) return ret;
-
-	    ret = self->write(self, GLB_DOMAINS, 
-			      "</A></LI> ",
-			      strlen("</A></LI> "));
-	    if (ret != glb_OK) return ret;
-
-
 	    set->next_ref = child->refs; 
 	    child->refs = set;
 	}
@@ -1328,8 +1568,7 @@ glbMaze_add_search_term(struct glbMaze *self,
     /* take one of the agents 
         TODO: check cached sets! */
 
-    testset = self->agent_set_storage[1];
-
+    /*testset = self->agent_set_storage[1];*/
 
     set = glbMaze_alloc_agent_set(self);
     if (!set) return glb_NOMEM;
@@ -1384,6 +1623,11 @@ glbMaze_write(struct glbMaze *self,
 	output_buf = &self->curr_domains_buf;
 	output_size = &self->domains_size;
 	free_space = &self->domains_free_space;
+	break;
+    case GLB_METADATA:
+	output_buf = &self->curr_metadata_buf;
+	output_size = &self->metadata_size;
+	free_space = &self->metadata_free_space;
 	break;
     default:
 	return oo_FAIL;
@@ -1513,23 +1757,6 @@ glbMaze_search(struct glbMaze *self,
     }
 
 
-    /* output domain items  */
-    ret = self->write(self, GLB_SEARCH_RESULTS,
-		GLB_JSON_SIMILAR_BEGIN,
-		GLB_JSON_SIMILAR_BEGIN_SIZE);
-    if (ret != glb_OK) return ret;
-
-    ret = self->write(self, GLB_SEARCH_RESULTS,
-		self->domains,
-		self->domains_size);
-    if (ret != glb_OK) return ret;
-
-    /* close string */
-    ret = self->write(self, GLB_SEARCH_RESULTS, 
-		      GLB_JSON_STR_END,
-		      GLB_JSON_STR_END_SIZE);
-    if (ret != glb_OK) return ret;
-    
 
 
     if (DEBUG_MAZE_LEVEL_3)
@@ -1538,7 +1765,7 @@ glbMaze_search(struct glbMaze *self,
 
     if (self->search_set_pool_size == 0) return glb_NO_RESULTS;
 
-    /* sorting the sets by size */
+    /* sorting the sets by size, ascending order */
     qsort(self->search_set_pool,
 	  self->search_set_pool_size, 
 	  sizeof(struct glbSet*), glbSet_cmp);
@@ -1558,6 +1785,18 @@ glbMaze_search(struct glbMaze *self,
 			      self->search_set_pool,
 			      self->search_set_pool_size);
     if (ret != glb_OK) return ret;
+
+
+    /*  sort domain sets, descending order */
+    qsort(self->agent_set_storage, 
+	  self->num_agents,
+	  sizeof(struct glbSet*), glbSet_cmp_desc);
+    /* write to buffer */
+    ret = glbMaze_output_domain_terms(self);
+
+
+
+
 
     /* main job: logical AND intersection */
     if (DEBUG_MAZE_LEVEL_2)
@@ -1789,6 +2028,16 @@ glbMaze_new(struct glbMaze **maze)
 	ret = glb_NOMEM;
 	goto error;
     }
+
+    /* metadata content buffer */
+    self->metadata = malloc(GLB_MAX_METADATA_BUF_SIZE + 1);
+    if (!self->metadata) {
+	ret = glb_NOMEM;
+	goto error;
+    }
+    self->curr_metadata_buf = self->metadata;
+    self->max_metadata_size =  GLB_MAX_METADATA_BUF_SIZE;
+    self->metadata_free_space = self->max_metadata_size;
     
     /* results buffer */
     self->results = malloc(GLB_RESULT_BUF_SIZE + 1);
@@ -1799,7 +2048,6 @@ glbMaze_new(struct glbMaze **maze)
     self->curr_results_buf = self->results;
     self->max_results_size =  GLB_RESULT_BUF_SIZE;
     self->results_free_space = self->max_results_size;
-
 
 
     /* domains buffer */

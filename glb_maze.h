@@ -42,9 +42,10 @@ struct glbMazeRef
 struct glbMazeSpec
 {
     const char *name;
-    struct glbMazeItem *topic;
+    struct glbMazeItem *item;
 
-    struct glbMazeItem *items;
+    size_t num_objs;
+
     struct glbMazeSpec *next;
 };
 
@@ -106,6 +107,13 @@ struct glbMaze
     /* original text buffer */
     char *text;
     size_t text_size;
+
+    /* metadata buffer */
+    char *metadata;
+    size_t metadata_size;
+    char *curr_metadata_buf;
+    size_t max_metadata_size;
+    size_t metadata_free_space;
 
     /* results buf */
     char *results;

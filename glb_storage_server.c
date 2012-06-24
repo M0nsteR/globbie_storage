@@ -88,7 +88,7 @@ void *glbStorage_add_agent(void *arg)
 	data->topics = s_recv(outbox, &data->topic_size);
 	data->index = s_recv(outbox, &data->index_size);
 
-	if (strstr(data->spec, "ADD")) {
+	if (strstr(data->spec, "action=\"add\"")) {
 	    printf("    ++ PARTITION AGENT #%d has got spec \"%s\"\n", 
 		   args->agent_id, data->spec);
 
@@ -99,14 +99,13 @@ void *glbStorage_add_agent(void *arg)
 	    printf("    ++ obj saved with local id: %s\n", 
 		   data->local_id);
 
-	    /*ret = maze->read_index(maze, (const char*)data->local_id);
-	      if (ret != glb_OK) goto final; */
-
+	    ret = maze->read_index(maze, (const char*)data->local_id);
+	    if (ret != glb_OK) goto final;
 
 	    /* notify delivery service */
 	    
-	    /*
-	    sprintf(buf, "<spec action=\"add_meta\" "
+
+	    /*sprintf(buf, "<spec action=\"add_meta\" "
                          " obj_id=\"%s\""
                          " topics=\"%s\"/>\n",
 		    data->id, data->metadata);
@@ -165,10 +164,10 @@ void *glbStorage_add_agent(void *arg)
 
     final:
 
-	/*if (confirm) {
+	if (confirm) {
 	    free(confirm);
-	    printf("del OK!\n");
-	    }*/
+	    /*printf("del OK!\n");*/
+	}
 
 	fflush(stdout);
     }
@@ -360,7 +359,7 @@ main(int const argc,
 			 glbStorage_add_registration,
 			 (void*)storage);*/
 
-    /* add metadata service */
+    /* add metad<ata service */
     /*ret = pthread_create(&metadata_service,
 			 NULL,
 			 glbStorage_add_metadata_service,
